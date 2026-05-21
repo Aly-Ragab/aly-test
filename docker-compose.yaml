@@ -1,0 +1,46 @@
+services:
+    # -------------------------------------------------------------
+    # 1. The Main App Container (For Running Commands & Testing)
+    # -------------------------------------------------------------
+    app:
+        build:
+            context: .
+            target: runtime
+        container_name: coffee_app
+        environment:
+            - APP_ENV=dev
+            - DATABASE_URL=sqlite:///%kernel.project_dir%/var/data.db?timeout=5&journal_mode=wal
+            - MESSENGER_TRANSPORT_DSN=doctrine://default
+        volumes:
+            # Persistent named volume specifically isolating the SQLite storage folder
+            - data_storage:/srv/app/var
+            # Bind mount for the source code for active local development convenience
+            # - .:/srv/app
+        # Keeps the main container open in the background so you can exec into it
+        tty: true
+        stdin_open: true
+
+    # -------------------------------------------------------------
+    # 2. The Dedicated Async Background Worker Container
+    # -------------------------------------------------------------
+    queue_worker:
+        build:
+            context: .
+            target: runtime
+        container_name: coffee_queue_worker
+        environment:
+            - APP_ENV=dev
+            - DATABASE_URL=sqlite:///%kernel.project_dir%/var/data.db?timeout=5&journal_mode=wal
+            - MESSENGER_TRANSPORT_DSN=doctrine://default
+        volumes:
+            - data_storage:/srv/app/var
+            #- .:/srv/app
+        # Overrides the default command to explicitly act as your SINGLE sequential consumer daemon
+        command: php bin/console messenger:consume async -vvv --limit=10 --memory-limit=128M
+        restart: always
+        depends_on:
+            - app
+
+volumes:
+    # Share the physical data file safely across both runtime environments
+    data_storage:
